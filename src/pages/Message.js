@@ -4,8 +4,8 @@ import axios from 'axios'
 import MainNavbar from '../components/MainNavbar' 
 
 export default function Message({user, userId}) {
-
     let roomInput = React.createRef();
+    const [activeRoom, setActiveRoom] = useState();
     const socket = io('http://localhost:8080', {
         reconnectionDelay: 1000,
         reconnection: true,
@@ -19,38 +19,61 @@ export default function Message({user, userId}) {
         }
     });
 
-    socket.on('connect', () => {
-        displayMessage(`You connected with id: ${socket.id}`);
-    })
+    // socket.on('connect', () => {
+    //     displayMessage(`You connected with id: ${socket.id}`);
+    // })
+    function joinRoom(e) {
+        e.preventDefault();
+        const room = roomInput.current.value;
+        const roomName = `${room}!@!@2@!@!${user.loggedInUser.useremail}`;
+        socket.emit('join-room', {room: roomName});
+    }
     
-    socket.on('update', (message, sender) => {
-        const fromMe = sender._id === userId;
-        displayMessage(message, fromMe, sender);
+    socket.on('join-room', room => {
+        setActiveRoom(room);
+        displayMessage(`joined ${room}`)
+        axios({
+            method: 'GET',
+            url: `http://localhost:8080/message?roomname=${room}`,
+        }).then(res => {
+            console.log(res.data)
+            displayAllMessage(res.data);
+        });
     })
 
-    socket.on('notify', room => {
-        displayMessage(`joined ${room}`)
-    }) 
-   
-    
     function handleSubmit(e) {
         const sender = user.loggedInUser
 
         e.preventDefault();
         const message = e.target.elements.messageInput.value;
-        const room = e.target.elements.roomInput.value;
+        const receiver = e.target.elements.roomInput.value;
         
         if(message === "") return
-        displayMessage(message, sender);
+        // displayMessage(message, sender);
 
-        socket.emit('send-msg', message, sender, room);   
+        socket.emit('send-msg', message, sender, activeRoom);   
     }
 
-    function joinRoom(e) {
-        e.preventDefault();
-        const room = roomInput.current.value;
-        socket.emit('join-room', room, userId);
+    socket.on('receive-msg', (message, sender) => {
+        const fromMe = sender._id === userId;
+        displayMessage(message, fromMe, sender);
+    })
+   
+    function displayAllMessage(messages) {
+        messages.map(msg => {
+            if(msg.from._id === userId) {
+                const div = document.createElement("div");
+                div.textContent = `You: ${msg.message}`;
+                document.getElementById('message-container').append(div);
+            } else {
+                const div = document.createElement("div");
+                div.textContent = `${msg.from.username}: ${msg.message}`;
+                document.getElementById('message-container').append(div);
+            }
+        })
     }
+
+
 
     function displayMessage(message, fromme = false, userSentMsg = {}) {
         const div = document.createElement("div");
@@ -68,6 +91,14 @@ export default function Message({user, userId}) {
 
     return (
         <div>
+            {
+                Object.keys(user).map( (key)=> {
+                    return <div>
+                       <div>"Username:"{user[key].username}</div>
+                       <div>"Useremail:"{user[key].useremail}</div>
+                    </div>
+                })
+            }
             <MainNavbar />
             <div className="chatbox" style={{backgroundColor: '#ffffff'}}>
                 <div id="message-container"></div>
